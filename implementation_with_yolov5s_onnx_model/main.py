@@ -27,6 +27,18 @@ def load_model(model_path):
     
     return net
 
+def final_output(net, output_layer, lanes):
+    for lane in lanes.getLanes():
+        lane.frame = cv2.resize(lane.frame, (640, 640))  # Ensure correct input size
+        blob = cv2.dnn.blobFromImage(lane.frame, 1 / 255.0, (640, 640), swapRB=True, crop=False)
+        net.setInput(blob)
+        layerOutputs = net.forward(output_layer)
+        dets = modify(layerOutputs)
+        boxes, frame = postprocess(lane.frame, dets)
+        lane.count = vehicle_count(boxes)
+        lane.frame = frame
+    return lanes
+
 def main(sources):
     """Main function for processing traffic control."""
     video_paths = [f"d:\\projects\\review\\AI-based-Traffic-Control-System--\\datas\\{src}" for src in sources]

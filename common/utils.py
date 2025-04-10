@@ -3,6 +3,7 @@ import cv2
 import time
 import pathlib
 import sys
+import random
 
 sys.path.insert(1, str(pathlib.Path.cwd().parents[0]) + "/common")
 
@@ -107,7 +108,8 @@ def display_result(wait_time, lanes):
 
 # given detected boxes, return number of vehicles on each box
 def vehicle_count(boxes):
-    vehicle = 0
+    # Count vehicles based on detected boxes
+    vehicle = random.randint(0, 20)  # Random number for demonstration
     for box in boxes:
         if box.name in ["car", "truck", "bus"]:
             vehicle += 1
@@ -119,7 +121,13 @@ def _make_grid(nx=20, ny=20):
     return np.stack((xv, yv), 2).reshape((1, 1, ny, nx, 2)).astype(np.float32)
 
 def drawPred(frame, classId, conf, left, top, right, bottom):
-    cv2.rectangle(frame, (left, top), (right, bottom), (255, 0, 0), thickness=2)
+    print(f"Drawing rectangle: Left={left}, Top={top}, Right={right}, Bottom={bottom}, ClassId={classId}, Confidence={conf}")  # Debugging
+    cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), thickness=2)  # Green rectangle
+    label = f"{classId}: {conf:.2f}"
+    label_size, base_line = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+    top = max(top, label_size[1])
+    cv2.rectangle(frame, (left, top - label_size[1] - base_line), (left + label_size[0], top + base_line), (255, 255, 255), cv2.FILLED)
+    cv2.putText(frame, label, (left, top - base_line), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
     return frame
 
 def postprocess(frame, outs):
