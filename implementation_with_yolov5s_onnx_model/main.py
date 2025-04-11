@@ -4,10 +4,18 @@ import pathlib
 import time
 import cv2
 import numpy as np
+from flask import Flask, Response, render_template
+import os
+
+# Hide the first window
+os.environ['OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS'] = '0'
 
 # Add the "common" directory to the Python path
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "common"))
 import utils as util
+
+# Initialize Flask app
+app = Flask(__name__, template_folder="../templates")  # Updated template folder path
 
 def load_video(video_path):
     """Loads a video file and returns a VideoCapture object."""
@@ -39,22 +47,11 @@ def final_output(net, output_layer, lanes):
         lane.frame = frame
     return lanes
 
-def main(sources):
-    """Main function for processing traffic control."""
-    video_paths = [f"d:\\projects\\review\\AI-based-Traffic-Control-System--\\datas\\{src}" for src in sources]
-    
-    # Load videos
-    cap_list = [load_video(video) for video in video_paths]
-    
-    # Load YOLOv5 ONNX model
-    model_path = r"d:\\projects\\review\\AI-based-Traffic-Control-System--\\models\\yolov5s.onnx"
-    net = load_model(model_path)
-    ln = net.getUnconnectedOutLayersNames()
-    
-    # Initialize lanes
-    lanes = util.Lanes([util.Lane(0, None, i + 1) for i in range(4)])
+def process_frames():
+    """Generator function to process and yield video frames."""
+    global cap_list, net, ln, lanes
     wait_time = 0
-    
+
     while True:
         frames = []
         
@@ -75,26 +72,48 @@ def main(sources):
         if wait_time <= 0:
             transition_image = util.display_result(wait_time, lanes)
             final_image = cv2.resize(transition_image, (1020, 720))
-            cv2.imshow("Traffic Control", final_image)
             wait_time = util.schedule(lanes)
         else:
             scheduled_image = util.display_result(wait_time, lanes)
             final_image = cv2.resize(scheduled_image, (1020, 720))
-            cv2.imshow("Traffic Control", final_image)
             wait_time -= 1
 
-        # Wait for a key press and allow quitting with 'q'
-        if cv2.waitKey(1) & 0xFF == ord('q'):  # Press 'q' to quit
-            break
+        _, buffer = cv2.imencode('.jpg', final_image)
+        frame = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-    for cap in cap_list:
-        cap.release()
-    cv2.destroyAllWindows()
+@app.route('/video_feed')
+def video_feed():
+    """Route to stream video frames."""
+    return Response(process_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/')
+def index():
+    """Route for the dashboard."""
+    return render_template('dashboard.html')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Traffic Control using YOLOv5 ONNX model")
-    parser.add_argument("--sources", type=str, default="video1.mp4,video2.mp4,video3.mp4,video5.mp4")  # Updated to remove video4.mp4
+    parser.add_argument("--sources", type=str, default="video1.mp4,video2.mp4,video3.mp4,video5.mp4")
     args = parser.parse_args()
 
     sources = args.sources.split(",")
-    main(sources)
+    video_paths = [f"d:\\projects\\review\\AI-based-Traffic-Control-System--\\datas\\{src}" for src in sources]
+
+    # Load videos
+    cap_list = [load_video(video) for video in video_paths]
+
+    # Load YOLOv5 ONNX model
+    model_path = r"d:\\projects\\review\\AI-based-Traffic-Control-System--\\models\\yolov5s.onnx"
+    net = load_model(model_path)
+    ln = net.getUnconnectedOutLayersNames()
+
+    # Initialize lanes
+    lanes = util.Lanes([util.Lane(0, None, i + 1) for i in range(4)])
+
+    # Ensure OpenCV windows are hidden
+    cv2.destroyAllWindows()  # Close all OpenCV windows
+
+    # Start Flask app
+    app.run(host='0.0.0.0', port=5000, debug=True)
